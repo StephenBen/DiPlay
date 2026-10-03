@@ -50,12 +50,14 @@ object AirPlayPersistence {
     private const val KEY_WIRELESS_ENABLED = "wireless_enabled"
     private const val KEY_WIRELESS_HOTSPOT_MODE = "wireless_hotspot_mode"
     private const val KEY_WIFI_P2P_PREFERRED_CHANNEL = "wifi_p2p_preferred_channel"
+    private const val KEY_DARK_MODE_SOURCE = "dark_mode_source"
     private const val KEY_MANUAL_HOTSPOT_SSID = "manual_hotspot_ssid"
     private const val KEY_MANUAL_HOTSPOT_PASSPHRASE = "manual_hotspot_passphrase"
     private const val KEY_MANUAL_HOTSPOT_BAND = "manual_hotspot_band"
     private const val KEY_MANUAL_HOTSPOT_CHANNEL = "manual_hotspot_channel"
     private const val KEY_MANUAL_HOTSPOT_SECURITY = "manual_hotspot_security"
     private const val KEY_DEBUG_LOGS_ENABLED = "debug_logs_enabled"
+    private const val KEY_KEY_DIAGNOSTICS_ENABLED = "key_diagnostics_enabled"
     private const val KEY_MANUFACTURER = "manufacturer"
     private const val KEY_MODEL = "model"
     private const val KEY_OEM_LABEL = "oem_label"
@@ -283,6 +285,18 @@ object AirPlayPersistence {
             .putInt(KEY_WIFI_P2P_PREFERRED_CHANNEL, channel).apply()
     }
 
+    fun loadDarkModeSource(context: Context): DarkModeSource =
+        DarkModeSource.fromPersistedName(
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_DARK_MODE_SOURCE, null),
+        )
+
+    fun saveDarkModeSource(context: Context, source: DarkModeSource) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_DARK_MODE_SOURCE, source.persistedName())
+            .apply()
+    }
+
     fun loadManualHotspotSsid(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_MANUAL_HOTSPOT_SSID, null)
@@ -353,6 +367,16 @@ object AirPlayPersistence {
     fun saveDebugLogsEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_DEBUG_LOGS_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadKeyDiagnosticsEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_KEY_DIAGNOSTICS_ENABLED, false)
+
+    fun saveKeyDiagnosticsEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_KEY_DIAGNOSTICS_ENABLED, enabled)
             .apply()
     }
 

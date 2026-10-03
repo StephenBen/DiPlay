@@ -45,6 +45,7 @@ internal object CarPlayMediaKeys {
         discard = Bitmap::recycle,
     )
     private var artworkOwner: Any? = null
+    private val deduplicator = MediaKeyDeduplicator()
     private var controller: CarPlayController? = null
     private var session: MediaSession? = null
     private var focusRequest: AudioFocusRequest? = null
@@ -55,6 +56,18 @@ internal object CarPlayMediaKeys {
     private var elapsedUpdatedAt = 0L
     private var artwork: Bitmap? = null
     private val artworkCache = LinkedHashMap<Int, Bitmap?>()
+
+    /**
+     * Receives "Key diag: …" lines for focus results, key events, send results and dedup drops.
+     * The activity attaches a logger; may be null. Called on any thread.
+     */
+    @Volatile
+    var diagnosticListener: ((String) -> Unit)? = null
+
+    private fun diag(message: String) {
+        val listener = diagnosticListener ?: return
+        mainHandler.post { listener(message) }
+    }
 
     @Synchronized
     fun attach(context: Context, next: CarPlayController) {
@@ -169,6 +182,7 @@ internal object CarPlayMediaKeys {
             )
             .setOnAudioFocusChangeListener({ change ->
                 Log.i(TAG, "audio focus change=$change")
+                diag("Key diag: audio focus change=$change")
                 // Only a permanent loss moves the car's media keys elsewhere; transient losses come back.
                 if (change == AudioManager.AUDIOFOCUS_LOSS) synchronized(this) { focusHeld = false }
             }, mainHandler)
@@ -182,6 +196,7 @@ internal object CarPlayMediaKeys {
             isActive = true
         }
         Log.i(TAG, "media keys active focusGranted=$granted")
+        diag("Key diag: media keys active focusGranted=$granted")
     }
 
     private fun releaseLocked() {
@@ -227,13 +242,35 @@ internal object CarPlayMediaKeys {
         // make the iPhone end the video session.
         if (CarPlayVideo.onMediaKey(index)) {
             Log.i(TAG, "media key $source -> car video player $index")
+            diag("Key diag: media key $source -> car video player $index")
             return
         }
         val sent = synchronized(this) { controller }?.sendMediaButton(index) ?: false
         Log.i(TAG, "media key $source -> CarPlay $index sent=$sent")
+        diag("Key diag: media key $source -> CarPlay $index sent=$sent")
     }
 
-    private val callback = CarPlayMediaCallback(::send)
+    /**
+     * Handles a hardware media key from a non-session path (activity dispatch, accessibility
+     * service). Keys pass through the shared [deduplicator] so one physical press arriving via
+     * several paths sends a single CarPlay press. Returns false when the key is not a CarPlay
+     * media key; true when the key was consumed, including duplicates the deduplicator dropped.
+     */
+    @Synchronized
+    fun sendHardwareKey(keyCode: Int, eventTime: Long, source: String): Boolean {
+        val index = CarPlayMediaButton.forKeyCode(keyCode) ?: return false
+        if (!deduplicator.shouldSend(keyCode, eventTime)) {
+            diag("Key diag: $source key=$keyCode dropped as duplicate")
+            return true
+        }
+        send(index, "$source key=$keyCode")
+        return true
+    }
+
+    /** Emits a diagnostic line to [diagnosticListener] when one is attached; safe from any thread. */
+    fun logDiagnostic(message: String) = diag(message)
+
+    private val callback = CarPlayMediaCallback(::send, ::sendHardwareKey, ::diag)
 
     /** Whether [next] changes what the media session's metadata shows; position and play state do not. */
     internal fun metadataChanged(previous: CarPlayNowPlaying, next: CarPlayNowPlaying): Boolean =
@@ -292,13 +329,24 @@ internal object CarPlayMediaKeys {
 /**
  * Media-session input → CarPlay presses. Hardware keys arrive as button events and keep the toggle;
  * media controllers (not hardware keys) call [onPlay] and [onPause] with an explicit intent.
+ *
+ * [hardwareKey] routes hardware button events through the shared deduplicator (by key code and
+ * event time) before they send; it returns false when the press was dropped as a duplicate.
+ * [diagnostic] receives a line for every hardware key the session sees.
  */
-internal class CarPlayMediaCallback(private val send: (index: Int, source: String) -> Unit) : MediaSession.Callback() {
+internal class CarPlayMediaCallback(
+    private val send: (index: Int, source: String) -> Unit,
+    private val hardwareKey: (keyCode: Int, eventTime: Long, source: String) -> Boolean = { _, _, _ -> true },
+    private val diagnostic: (String) -> Unit = {},
+) : MediaSession.Callback() {
     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
         @Suppress("DEPRECATION")
         val event = mediaButtonIntent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) ?: return false
         val index = CarPlayMediaButton.forKeyCode(event.keyCode) ?: return super.onMediaButtonEvent(mediaButtonIntent)
-        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+        diagnostic("Key diag: media session key=${event.keyCode} action=${event.action}")
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            hardwareKey(event.keyCode, event.eventTime, KeyEvent.keyCodeToString(event.keyCode))
+        ) {
             send(index, KeyEvent.keyCodeToString(event.keyCode))
         }
         return true

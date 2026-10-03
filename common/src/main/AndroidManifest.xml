@@ -92,6 +92,20 @@
             </intent-filter>
         </service>
 
+        <!-- Last-resort steering-wheel media key path for head units that do not route keys to the
+             media session (e.g. BYD DiLink 3.0); the user enables it in Settings → Accessibility. -->
+        <service
+            android:name="com.shilapi.xcertplay.DiPlayKeyAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
         <receiver
             android:name="com.shilapi.xcertplay.BootReceiver"
             android:enabled="true"

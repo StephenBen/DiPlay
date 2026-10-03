@@ -98,6 +98,7 @@
     <string name="allow_nearby_devices_so_diplay_can_connect_to_your_paired">Allow Nearby devices so DiPlay can connect to your paired iPhone.</string>
     <string name="allow_precise_location_for_diplay_in_the_head_unit_s_app_p">Allow precise Location for DiPlay in the head unit’s app permissions.</string>
     <string name="allow_the_connection_permission_to_continue">Allow the connection permission to continue</string>
+    <string name="accessibility_service_description">Sends steering-wheel media keys to CarPlay when the head unit does not route them to the media session.</string>
     <string name="an_independent_carplay_receiver_for_android_head_units_wir">An independent CarPlay receiver for Android head units. Wired and wireless connections run on the head unit, with local authentication. A standard iPhone can connect without a jailbreak, Mac, dongle or sign-in.\n\nThis preview uses an experimental accessory identity. Compatibility with every iPhone and head unit is still being tested. It is not an Apple-certified product.</string>
     <string name="android_9_compatibility">Android 9 compatibility</string>
     <string name="app_permissions">App permissions</string>
@@ -227,6 +228,9 @@
     <string name="instrument_theme">Instrument theme</string>
     <string name="keep_bluetooth_and_wi_fi_on_your_iphone_pair_with_the_car">Keep Bluetooth and Wi-Fi on your iPhone. Pair with the car’s Bluetooth, then select your iPhone here. Allow Nearby devices when asked.</string>
     <string name="keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow">Keep your iPhone nearby with Bluetooth and Wi-Fi on.\nAllow CarPlay if your iPhone asks.</string>
+    <string name="key_diagnostics">Key diagnostics</string>
+    <string name="key_diagnostics_description">Log steering-wheel media keys for troubleshooting</string>
+    <string name="key_diagnostics_hint">For steering-wheel keys on DiLink 3.0, also enable the DiPlay (com.shihab.diplay) accessibility service in the head unit’s Settings → Accessibility.</string>
     <string name="later">Later</string>
     <string name="left_hand_drive">Left-hand drive</string>
     <string name="linux_device_path_for_example_dev_i2c_1">Linux device path, for example /dev/i2c-1.</string>
@@ -250,6 +254,12 @@
     <string name="navigation_stream_type">Navigation stream type</string>
     <string name="nearby_devices">Nearby devices</string>
     <string name="nearby_devices_connects_your_iphone_microphone_enables_sir">Nearby devices connects your iPhone. Microphone enables Siri and calls. Older Android versions also require Location for wireless setup. USB mode may ask for a local VPN connection.</string>
+    <string name="night_mode">Night mode</string>
+    <string name="night_mode_auto_brightness">Auto (screen brightness)</string>
+    <string name="night_mode_auto_ui_mode">Auto (follow head unit)</string>
+    <string name="night_mode_force_day">Always day</string>
+    <string name="night_mode_force_night">Always night</string>
+    <string name="night_mode_sun_schedule">Auto (sunrise &amp; sunset)</string>
     <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">Nothing is sent automatically. Protocol payloads and credentials are excluded.</string>
     <string name="oem_label">OEM label</string>
     <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">On your iPhone, open Settings → Bluetooth and pair with the car. Then return to DiPlay and choose Connect phone.</string>

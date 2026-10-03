@@ -2,11 +2,14 @@ package com.shilapi.xcertplay
 
 import android.Manifest
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.location.Location
+import android.location.LocationManager
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
@@ -21,6 +24,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.Editable
 import android.text.InputType
 import android.text.TextUtils
@@ -90,6 +94,7 @@ import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -315,6 +320,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var navigationStreamType = 14
     private var debugLogsEnabled = false
     private var autoStartOnBoot = false
+    private var keyDiagnosticsEnabled = false
     private var manufacturer = AirPlayPersistence.DEFAULT_MANUFACTURER
     private var model = AirPlayPersistence.DEFAULT_MODEL
     private var oemLabel = AirPlayPersistence.DEFAULT_OEM_LABEL
@@ -352,6 +358,7 @@ class CarPlayHostActivity : ComponentActivity() {
     private var latestStage = "Preparing CarPlay"
     private var darkMode = false
     private val themeDiagnostics = ThemeModeDiagnostics()
+    private var darkModeSource = DarkModeSource.AUTO_UI_MODE
     private var lastConfiguration: Configuration? = null
     private var activeAirPlaySession: AirPlaySession? = null
     private val activeScreenStreamTypes = mutableSetOf<Int>()
@@ -458,6 +465,12 @@ class CarPlayHostActivity : ComponentActivity() {
             resources.getBoolean(R.bool.config_advanced_audio_channel_mapping)
         airPlayIdentity = AirPlayPersistence.loadIdentity(this)
         loadPersistedSettings()
+        resolveDarkMode(darkModeSource)?.let { darkMode = it }
+        CarPlayMediaKeys.diagnosticListener = { message ->
+            mainHandler.post {
+                if (!isDestroyed && keyDiagnosticsEnabled) appendLog(message)
+            }
+        }
         locationPermissionAvailable = hasFineLocationPermission()
         setContentView(buildContentView())
         applyFullscreenMode()
@@ -505,6 +518,7 @@ class CarPlayHostActivity : ComponentActivity() {
         navigationStreamType = AirPlayPersistence.loadNavigationStreamType(this)
         debugLogsEnabled = AirPlayPersistence.loadDebugLogsEnabled(this)
         autoStartOnBoot = AirPlayPersistence.loadAutoStartOnBoot(this)
+        keyDiagnosticsEnabled = AirPlayPersistence.loadKeyDiagnosticsEnabled(this)
         manufacturer = AirPlayPersistence.loadManufacturer(this)
         model = AirPlayPersistence.loadModel(this)
         oemLabel = AirPlayPersistence.loadOemLabel(this)
@@ -520,6 +534,7 @@ class CarPlayHostActivity : ComponentActivity() {
         hideBottomBar = AirPlayPersistence.loadHideBottomBar(this)
         safeAreaDrawOutside = AirPlayPersistence.loadSafeAreaDrawOutside(this)
         locationReportingEnabled = AirPlayPersistence.loadLocationReportingEnabled(this)
+        darkModeSource = AirPlayPersistence.loadDarkModeSource(this)
         locationPermissionAvailable = hasFineLocationPermission()
         wirelessEnabled = AirPlayPersistence.loadWirelessEnabled(this)
         mfiTarget = AirPlayPersistence.loadMfiTarget(this)
@@ -810,6 +825,10 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     // Hardware navigation belongs to the iPhone-rendered CarPlay UI, not Android View focus.
+    // The steering-wheel voice key reaches the focused window; while CarPlay is on screen it opens
+    // Siri. Media keys take the same path on head units that never route them to the media session
+    // (e.g. DiLink 3.0); they share CarPlayMediaKeys' deduplicator with the session and the
+    // accessibility service so one press sends a single CarPlay press.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (!menuOpen && AndroidTvInputMode.shouldUseKnobAsPrimaryInput(this) &&
             CarPlayRemoteKeys.dispatch(event, controller)) {
@@ -822,13 +841,23 @@ class CarPlayHostActivity : ComponentActivity() {
             return true
         }
 
-        // Keep DiPlay's existing steering-wheel/voice-key Siri handling intact.
-        if (!CarPlayMediaButton.opensSiri(event.keyCode)) return super.dispatchKeyEvent(event)
-        if (event.action == KeyEvent.ACTION_UP) {
-            val sent = controller?.requestSiri() == true
-            appendLog("Siri: voice key ${event.keyCode} sent=$sent")
+        if (CarPlayMediaButton.opensSiri(event.keyCode)) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                val sent = controller?.requestSiri() == true
+                appendLog("Siri: voice key ${event.keyCode} sent=$sent")
+            }
+            return true
         }
-        return true
+        if (keyDiagnosticsEnabled) {
+            appendLog("Key diag: dispatch key=${event.keyCode} action=${event.action}")
+        }
+        if (CarPlayMediaButton.forKeyCode(event.keyCode) != null &&
+            event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
+        ) {
+            CarPlayMediaKeys.sendHardwareKey(event.keyCode, event.eventTime, "dispatch")
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -934,6 +963,7 @@ class CarPlayHostActivity : ComponentActivity() {
         sessionLog?.append("Activity destroyed")
         sessionLog?.close()
         sessionLog = null
+        if (CarPlayMediaKeys.diagnosticListener != null) CarPlayMediaKeys.diagnosticListener = null
         super.onDestroy()
     }
 
@@ -1443,6 +1473,33 @@ class CarPlayHostActivity : ComponentActivity() {
         }
 
         content.addView(
+            settingsChoiceRow(
+                label = getString(R.string.night_mode),
+                options = listOf(
+                    DarkModeSource.AUTO_UI_MODE to getString(R.string.night_mode_auto_ui_mode),
+                    DarkModeSource.AUTO_BRIGHTNESS to getString(R.string.night_mode_auto_brightness),
+                    DarkModeSource.SUN_SCHEDULE to getString(R.string.night_mode_sun_schedule),
+                    DarkModeSource.FORCE_DAY to getString(R.string.night_mode_force_day),
+                    DarkModeSource.FORCE_NIGHT to getString(R.string.night_mode_force_night),
+                ),
+                selected = darkModeSource,
+            ) { value ->
+                darkModeSource = value
+                AirPlayPersistence.saveDarkModeSource(this, value)
+                appendLog("Night mode source: ${value.persistedName()}")
+                val night = resolveDarkMode(value) ?: return@settingsChoiceRow
+                if (night == darkMode) return@settingsChoiceRow
+                darkMode = night
+                appendLog("Head unit switched to ${if (night) "night" else "day"} mode")
+                syncAirPlayDarkMode(ThemeModeDiagnostics.Source.SETTINGS)
+            },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(24) },
+        )
+
+        content.addView(
             buildSafeAreaSection(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1474,6 +1531,13 @@ class CarPlayHostActivity : ComponentActivity() {
         )
         content.addView(
             buildDebugLogsSection(),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(12) },
+        )
+        content.addView(
+            buildKeyDiagnosticsSection(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1646,10 +1710,12 @@ class CarPlayHostActivity : ComponentActivity() {
         AirPlayPersistence.saveModel(this, model)
         AirPlayPersistence.saveOemLabel(this, oemLabel)
         AirPlayPersistence.saveDebugLogsEnabled(this, debugLogsEnabled)
+        AirPlayPersistence.saveKeyDiagnosticsEnabled(this, keyDiagnosticsEnabled)
         AirPlayPersistence.saveRightHandDrive(this, rightHandDrive)
         AirPlayPersistence.saveHideTopBar(this, hideTopBar)
         AirPlayPersistence.saveHideBottomBar(this, hideBottomBar)
         AirPlayPersistence.saveSafeAreaDrawOutside(this, safeAreaDrawOutside)
+        AirPlayPersistence.saveDarkModeSource(this, darkModeSource)
     }
 
     private fun captureSettingsBaseline(): SettingsBaseline {
@@ -1984,6 +2050,43 @@ class CarPlayHostActivity : ComponentActivity() {
             appendLog("Debug logs ${if (debugLogsEnabled) "enabled" else "disabled"}")
             updateDebugOverlays()
         }
+
+    private fun buildKeyDiagnosticsSection(): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                settingsSwitchRow(
+                    label = getString(R.string.key_diagnostics),
+                    checked = keyDiagnosticsEnabled,
+                    description = getString(R.string.key_diagnostics_description),
+                ) { checked ->
+                    keyDiagnosticsEnabled = checked
+                    AirPlayPersistence.saveKeyDiagnosticsEnabled(this@CarPlayHostActivity, checked)
+                    appendLog("Key diagnostics ${if (checked) "enabled" else "disabled"}")
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            if (!keyAccessibilityServiceEnabled()) {
+                addView(
+                    menuText(getString(R.string.key_diagnostics_hint), 14f, MENU_SECONDARY),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = dp(6) },
+                )
+            }
+        }
+
+    /** Whether the user already turned on the accessibility service in the head unit's settings. */
+    private fun keyAccessibilityServiceEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            ?: return false
+        val self = ComponentName(this, DiPlayKeyAccessibilityService::class.java).flattenToString()
+        return enabled.split(':').any { it.equals(self, ignoreCase = true) }
+    }
 
     private fun buildStepSliderSection(
         title: String,
@@ -3399,13 +3502,23 @@ class CarPlayHostActivity : ComponentActivity() {
         newConfig: Configuration = resources.configuration,
         source: ThemeModeDiagnostics.Source,
     ) {
-        if (lastConfiguration == newConfig) {
-            logThemeState(source, newConfig)
-            return
+        val darkSource = AirPlayPersistence.loadDarkModeSource(this)
+        val night = when (darkSource) {
+            DarkModeSource.AUTO_UI_MODE -> {
+                if (lastConfiguration == newConfig) {
+                    logThemeState(source, newConfig)
+                    return
+                }
+                // resources.configuration is mutated in place, so keep a copy to compare against.
+                lastConfiguration = Configuration(newConfig)
+                nightModeOrNull(newConfig.uiMode)
+            }
+            // Other sources do not depend on the configuration, so re-evaluate every poll tick.
+            DarkModeSource.AUTO_BRIGHTNESS -> brightnessNightOrNull()
+            DarkModeSource.SUN_SCHEDULE -> sunScheduleNight()
+            DarkModeSource.FORCE_DAY -> false
+            DarkModeSource.FORCE_NIGHT -> true
         }
-        // resources.configuration is mutated in place, so keep a copy to compare against.
-        lastConfiguration = Configuration(newConfig)
-        val night = nightModeOrNull(newConfig.uiMode)
         if (night == null || night == darkMode) {
             logThemeState(source, newConfig)
             return
@@ -3420,6 +3533,46 @@ class CarPlayHostActivity : ComponentActivity() {
         themeDiagnostics.observe(
             source, configuration.uiMode, darkMode, activeAirPlaySession != null, SystemClock.elapsedRealtime(),
         )?.let(::appendLog)
+    }
+
+    /** Night state from the persisted source, or null when that source cannot decide yet. */
+    private fun resolveDarkMode(source: DarkModeSource): Boolean? = when (source) {
+        DarkModeSource.AUTO_UI_MODE -> nightModeOrNull(resources.configuration.uiMode)
+        DarkModeSource.AUTO_BRIGHTNESS -> brightnessNightOrNull()
+        DarkModeSource.SUN_SCHEDULE -> sunScheduleNight()
+        DarkModeSource.FORCE_DAY -> false
+        DarkModeSource.FORCE_NIGHT -> true
+    }
+
+    private fun brightnessNightOrNull(): Boolean? = try {
+        val brightness = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+        isNightByBrightness(brightness)
+    } catch (error: Settings.SettingNotFoundException) {
+        null
+    }
+
+    private fun sunScheduleNight(): Boolean {
+        val coordinates = lastKnownCoordinates() ?: DEFAULT_LOCATION_COORDINATES
+        return isNightBySunSchedule(
+            System.currentTimeMillis(),
+            coordinates.first,
+            coordinates.second,
+            TimeZone.getDefault(),
+        )
+    }
+
+    /** Best cached location from any provider, or null when none is available. */
+    private fun lastKnownCoordinates(): Pair<Double, Double>? {
+        val manager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        val location = try {
+            manager.getProviders(true)
+                .asSequence()
+                .mapNotNull { manager.getLastKnownLocation(it) }
+                .maxByOrNull(Location::getTime)
+        } catch (error: SecurityException) {
+            null
+        }
+        return location?.let { it.latitude to it.longitude }
     }
 
     private fun syncAirPlayDarkMode(source: ThemeModeDiagnostics.Source) {
@@ -3996,6 +4149,7 @@ class CarPlayHostActivity : ComponentActivity() {
         val MENU_BUTTON_TEXT = Color.rgb(8, 17, 11)
         val MENU_DANGER = Color.rgb(190, 45, 45)
         val NO_VIDEO_BACKGROUND = Color.rgb(0x16, 0x16, 0x18)
+        val DEFAULT_LOCATION_COORDINATES = 39.9042 to 116.4074 // Beijing fallback for the sun schedule
     }
 
     private data class DisplaySize(val width: Int, val height: Int)

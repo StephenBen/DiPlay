@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import com.shilapi.xcertplay.airplay.CarPlayMediaButton
 import com.shilapi.xcertplay.media.CarPlayNowPlaying
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,7 +17,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [29], manifest = Config.NONE)
 class CarPlayMediaCallbackTest {
     private val sent = mutableListOf<Int>()
-    private val callback = CarPlayMediaCallback { index, _ -> sent += index }
+    private val callback = CarPlayMediaCallback(send = { index, _ -> sent += index })
 
     @Test
     fun controllerPlayAndPauseAreExplicit() {
@@ -71,6 +72,46 @@ class CarPlayMediaCallbackTest {
         assertEquals(257_000, metadata.getLong(MediaMetadata.METADATA_KEY_DURATION))
         assertEquals(artwork, metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART))
         assertEquals(artwork, metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON))
+    }
+
+    @Test
+    fun nonMediaKeyFallsThroughToSuper() {
+        val consumed = callback.onMediaButtonEvent(
+            button(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0)),
+        )
+
+        assertEquals(false, consumed)
+        assertEquals(emptyList<Int>(), sent)
+    }
+
+    @Test
+    fun duplicateHardwareKeyIsNotSent() {
+        var accept = true
+        val callback = CarPlayMediaCallback(
+            { index, _ -> sent += index },
+            hardwareKey = { _, _, _ -> accept },
+        )
+
+        callback.onMediaButtonEvent(button(KeyEvent(0, 100, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_NEXT, 0)))
+        accept = false
+        callback.onMediaButtonEvent(button(KeyEvent(0, 200, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_NEXT, 0)))
+
+        assertEquals(listOf(CarPlayMediaButton.NEXT), sent)
+    }
+
+    @Test
+    fun diagnosticsReportEveryHardwareKey() {
+        val diagnostics = mutableListOf<String>()
+        val callback = CarPlayMediaCallback({ _, _ -> }, diagnostic = diagnostics::add)
+
+        callback.onMediaButtonEvent(button(KeyEvent(0, 100, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_NEXT, 0)))
+        callback.onMediaButtonEvent(button(KeyEvent(0, 100, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_NEXT, 0)))
+        callback.onMediaButtonEvent(button(KeyEvent(0, 100, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, 0)))
+
+        assertEquals(2, diagnostics.size)
+        assertTrue("got: ${diagnostics[0]}", diagnostics[0].contains("Key diag:"))
+        assertTrue("got: ${diagnostics[0]}", diagnostics[0].contains("key=${KeyEvent.KEYCODE_MEDIA_NEXT}"))
+        assertTrue(diagnostics[1].contains("action=1"))
     }
 
     private fun press(keyCode: Int, repeat: Int = 0) {

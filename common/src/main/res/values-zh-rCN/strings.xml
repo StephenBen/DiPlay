@@ -90,6 +90,7 @@
     <string name="allow_nearby_devices_so_diplay_can_connect_to_your_paired">请允许 DiPlay 访问附近的设备，以连接已配对的 iPhone。</string>
     <string name="allow_precise_location_for_diplay_in_the_head_unit_s_app_p">请在车机应用权限中允许 DiPlay 使用精确位置信息。</string>
     <string name="allow_the_connection_permission_to_continue">请授予连接权限以继续</string>
+    <string name="accessibility_service_description">当车机不把方向盘媒体按键路由到媒体会话时，将其发送给 CarPlay。</string>
     <string name="an_independent_carplay_receiver_for_android_head_units_wir">面向 Android 车机的独立 CarPlay 接收器。有线和无线连接均在车机上运行，并使用本地认证。普通 iPhone 无需越狱、Mac、转接器或登录即可连接。\n\n此预览版使用实验性配件身份，仍在测试与不同 iPhone 和车机的兼容性。本产品未经 Apple 认证。</string>
     <string name="android_9_compatibility">Android 9 兼容性</string>
     <string name="app_name">DiPlay</string>
@@ -221,6 +222,9 @@
     <string name="instrument_theme">仪表盘主题</string>
     <string name="keep_bluetooth_and_wi_fi_on_your_iphone_pair_with_the_car">保持 iPhone 的蓝牙和 Wi-Fi 开启。先与车机蓝牙配对，然后在此选择你的 iPhone。出现提示时允许“附近的设备”。</string>
     <string name="keep_your_iphone_nearby_with_bluetooth_and_wi_fi_on_allow">请将 iPhone 放在附近并开启蓝牙和 Wi-Fi。\niPhone 出现提示时允许使用 CarPlay。</string>
+    <string name="key_diagnostics">按键诊断</string>
+    <string name="key_diagnostics_description">记录方向盘媒体按键，便于排查按键问题</string>
+    <string name="key_diagnostics_hint">在 DiLink 3.0 上使用方向盘按键时，还需在车机的 设置 → 辅助功能 中开启 DiPlay（com.shihab.diplay）的无障碍服务。</string>
     <string name="language_app_language">应用语言</string>
     <string name="language_apply">应用</string>
     <string name="language_hint">选择 DiPlay 的语言。“跟随系统”将使用设备语言。</string>
@@ -249,6 +253,12 @@
     <string name="navigation_stream_type">导航音频流类型</string>
     <string name="nearby_devices">附近的设备</string>
     <string name="nearby_devices_connects_your_iphone_microphone_enables_sir">“附近的设备”权限用于连接 iPhone；麦克风权限用于 Siri 和通话。较旧的 Android 版本还需要位置权限来设置无线连接。USB 模式可能会请求建立本地 VPN 连接。</string>
+    <string name="night_mode">夜间模式</string>
+    <string name="night_mode_auto_brightness">自动（屏幕亮度）</string>
+    <string name="night_mode_auto_ui_mode">自动（跟随车机）</string>
+    <string name="night_mode_force_day">始终白天</string>
+    <string name="night_mode_force_night">始终夜间</string>
+    <string name="night_mode_sun_schedule">自动（日出日落）</string>
     <string name="nothing_is_sent_automatically_protocol_payloads_and_creden">报告不会自动发送，不包含协议数据和凭据。</string>
     <string name="oem_label">OEM 标签</string>
     <string name="on_your_iphone_open_settings_bluetooth_and_pair_with_the_c">在 iPhone 上打开“设置 → 蓝牙”并与车机配对。然后返回 DiPlay，点击“连接手机”。</string>
